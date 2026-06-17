@@ -40,11 +40,11 @@ pub enum CsvError {
     Io(#[from] csv::Error),
     /// Failed to extract the inner writer.
     #[error("CSV into_inner: {0}")]
-    IntoInner(csv::IntoInnerError<csv::Writer<Vec<u8>>>),
+    IntoInner(Box<csv::IntoInnerError<csv::Writer<Vec<u8>>>>),
 }
 
 impl From<csv::IntoInnerError<csv::Writer<Vec<u8>>>> for CsvError {
     fn from(e: csv::IntoInnerError<csv::Writer<Vec<u8>>>) -> Self {
-        Self::IntoInner(e)
+        Self::IntoInner(Box::new(e))
     }
 }
