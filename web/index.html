@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vault</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div id="lock-screen">
+    <h1>Vault</h1>
+    <p class="muted">E2E encrypted password vault</p>
+    <label>API endpoint
+      <input id="api-url" type="text" placeholder="https://vault.example.com/keychain/vault">
+    </label>
+    <label>API token
+      <input id="api-token" type="password" placeholder="64-byte base64url">
+    </label>
+    <label>Master password
+      <input id="master-pw" type="password" placeholder="主口令" autofocus>
+    </label>
+    <button id="unlock-btn">解锁</button>
+    <div id="lock-error"></div>
+    <details>
+      <summary>关于 E2E 加密</summary>
+      <p>主口令永远不会离开浏览器；服务器只看到加密的密文。即使 VPS 被完全入侵，没有主口令也无法解密数据。</p>
+    </details>
+  </div>
+
+  <div id="app" hidden>
+    <aside id="sidebar">
+      <div class="search-box-wrap">
+        <input id="search-box" type="search" placeholder="搜索...  (name:github tag:work)">
+      </div>
+      <div id="status-bar"><span id="entry-count">0</span> 条目</div>
+      <div id="groups"></div>
+    </aside>
+    <main>
+      <div id="results"></div>
+      <div id="detail" hidden>
+        <h2 id="d-name"></h2>
+        <dl>
+          <dt>URL</dt>
+          <dd id="d-url"></dd>
+          <dt>Username</dt>
+          <dd><span id="d-user"></span><button data-copy="user">复制</button></dd>
+          <dt>Password</dt>
+          <dd><span id="d-pw">••••••••</span><button id="d-reveal">显示</button><button data-copy="pw">复制</button></dd>
+          <dt>Note</dt>
+          <dd id="d-note"></dd>
+        </dl>
+      </div>
+    </main>
+    <button id="lock-btn" title="锁定并清除内存">🔒</button>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
