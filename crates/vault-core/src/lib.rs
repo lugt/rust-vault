@@ -5,6 +5,7 @@
 pub mod aead;
 pub mod csv_codec;
 pub mod entry;
+pub mod group;
 pub mod kdf;
 pub mod search;
 pub mod types;
@@ -13,6 +14,7 @@ pub mod wrap;
 pub use aead::{decrypt, encrypt, AeadError};
 pub use csv_codec::{decode_csv, encode_csv, CsvError};
 pub use entry::Entry;
+pub use group::{group_by_domain, group_by_letter, group_by_tag, Grouped};
 pub use kdf::{derive_mk, KdfParams};
 pub use search::{jaccard, search, trigrams, Hit};
 pub use types::{ct_eq, Cek, EncryptedCsv, MasterKey, Salt, Version, WrappedCek};
@@ -342,5 +344,73 @@ mod tests {
         )];
         let hits = search("GITHUB", &entries);
         assert_eq!(hits.len(), 1);
+    }
+
+    #[test]
+    fn test_group_by_domain() {
+        let entries = vec![
+            Entry::new(
+                "a".into(),
+                "https://github.com/".into(),
+                "".into(),
+                "".into(),
+                "".into(),
+            ),
+            Entry::new(
+                "b".into(),
+                "https://github.com/x".into(),
+                "".into(),
+                "".into(),
+                "".into(),
+            ),
+            Entry::new(
+                "c".into(),
+                "https://gmail.com/".into(),
+                "".into(),
+                "".into(),
+                "".into(),
+            ),
+        ];
+        let g = group_by_domain(&entries);
+        assert_eq!(g.get("github.com").map(|v| v.len()), Some(2));
+        assert_eq!(g.get("gmail.com").map(|v| v.len()), Some(1));
+    }
+
+    #[test]
+    fn test_group_by_tag() {
+        let entries = vec![
+            Entry::new("a".into(), "".into(), "".into(), "".into(), "#work".into()),
+            Entry::new(
+                "b".into(),
+                "".into(),
+                "".into(),
+                "".into(),
+                "#work #urgent".into(),
+            ),
+            Entry::new(
+                "c".into(),
+                "".into(),
+                "".into(),
+                "".into(),
+                "no tags".into(),
+            ),
+        ];
+        let g = group_by_tag(&entries);
+        assert_eq!(g.get("work").map(|v| v.len()), Some(2));
+        assert_eq!(g.get("urgent").map(|v| v.len()), Some(1));
+    }
+
+    #[test]
+    fn test_group_by_letter() {
+        let entries = vec![
+            Entry::new("Apple".into(), "".into(), "".into(), "".into(), "".into()),
+            Entry::new("apricot".into(), "".into(), "".into(), "".into(), "".into()),
+            Entry::new("Banana".into(), "".into(), "".into(), "".into(), "".into()),
+            Entry::new("123".into(), "".into(), "".into(), "".into(), "".into()),
+        ];
+        let g = group_by_letter(&entries);
+        assert_eq!(g.get("A").map(|v| v.len()), Some(2));
+        assert_eq!(g.get("B").map(|v| v.len()), Some(1));
+        assert_eq!(g.get("#").map(|v| v.len()), Some(1));
     }
 }
