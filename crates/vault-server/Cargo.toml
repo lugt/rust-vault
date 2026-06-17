@@ -4,3 +4,27 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+
+[lib]
+name = "vault_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "vault-server"
+path = "src/main.rs"
+
+[dependencies]
+vault-core = { path = "../vault-core" }
+axum = "0.7.5"
+tokio = { version = "1.39.2", features = ["full"] }
+tower = "0.5.0"
+tower-http = { version = "0.6.1", features = ["limit", "trace"] }
+rusqlite = { version = "0.32.1", features = ["bundled"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+subtle.workspace = true
+chrono.workspace = true
