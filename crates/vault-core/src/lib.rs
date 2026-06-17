@@ -2,9 +2,11 @@
 #![deny(missing_docs)]
 //! E2E encryption core for mypass vault.
 
+pub mod aead;
 pub mod kdf;
 pub mod types;
 
+pub use aead::{decrypt, encrypt, AeadError};
 pub use kdf::{derive_mk, KdfParams};
 pub use types::{ct_eq, Cek, EncryptedCsv, MasterKey, Salt, Version, WrappedCek};
 
@@ -72,5 +74,42 @@ mod tests {
         let mk1 = derive_mk(b"foo", &salt, &p).unwrap();
         let mk2 = derive_mk(b"bar", &salt, &p).unwrap();
         assert_ne!(mk1.as_bytes(), mk2.as_bytes());
+    }
+
+    #[test]
+    fn aead_round_trip() {
+        let cek = Cek([7u8; 32]);
+        let pt = b"hello world";
+        let ct = encrypt(&cek, pt).unwrap();
+        let back = decrypt(&cek, &ct).unwrap();
+        assert_eq!(back, pt);
+    }
+
+    #[test]
+    fn aead_tampered_ct_fails() {
+        let cek = Cek([1u8; 32]);
+        let mut ct = encrypt(&cek, b"hi").unwrap();
+        ct.ct[0] ^= 0x01;
+        assert!(decrypt(&cek, &ct).is_err());
+    }
+
+    #[test]
+    fn aead_wrong_key_fails() {
+        let ct = encrypt(&Cek([1u8; 32]), b"hi").unwrap();
+        assert!(decrypt(&Cek([2u8; 32]), &ct).is_err());
+    }
+
+    #[test]
+    fn aead_nonce_is_24_bytes() {
+        let ct = encrypt(&Cek([0u8; 32]), b"x").unwrap();
+        assert_eq!(ct.nonce.len(), 24);
+    }
+
+    #[test]
+    fn aead_two_nonces_differ() {
+        let cek = Cek([0u8; 32]);
+        let a = encrypt(&cek, b"x").unwrap();
+        let b = encrypt(&cek, b"x").unwrap();
+        assert_ne!(a.nonce, b.nonce);
     }
 }
