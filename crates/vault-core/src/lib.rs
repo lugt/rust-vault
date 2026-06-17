@@ -2,8 +2,10 @@
 #![deny(missing_docs)]
 //! E2E encryption core for mypass vault.
 
+pub mod kdf;
 pub mod types;
 
+pub use kdf::{derive_mk, KdfParams};
 pub use types::{ct_eq, Cek, EncryptedCsv, MasterKey, Salt, Version, WrappedCek};
 
 /// Returns the library version.
@@ -42,5 +44,33 @@ mod tests {
         let max = Version(u64::MAX);
         let max_next = max.increment_saturating();
         assert_eq!(max_next.0, u64::MAX);
+    }
+
+    #[test]
+    fn kdf_is_deterministic_with_same_salt() {
+        use crate::types::Salt;
+        let salt = Salt([1u8; 16]);
+        let p = KdfParams::default();
+        let mk1 = derive_mk(b"correct horse battery staple", &salt, &p).unwrap();
+        let mk2 = derive_mk(b"correct horse battery staple", &salt, &p).unwrap();
+        assert_eq!(mk1.as_bytes(), mk2.as_bytes());
+    }
+
+    #[test]
+    fn kdf_changes_with_different_salt() {
+        let p = KdfParams::default();
+        let mk1 = derive_mk(b"x", &Salt([1u8; 16]), &p).unwrap();
+        let mk2 = derive_mk(b"x", &Salt([2u8; 16]), &p).unwrap();
+        assert_ne!(mk1.as_bytes(), mk2.as_bytes());
+    }
+
+    #[test]
+    fn kdf_changes_with_different_password() {
+        use crate::types::Salt;
+        let salt = Salt([1u8; 16]);
+        let p = KdfParams::default();
+        let mk1 = derive_mk(b"foo", &salt, &p).unwrap();
+        let mk2 = derive_mk(b"bar", &salt, &p).unwrap();
+        assert_ne!(mk1.as_bytes(), mk2.as_bytes());
     }
 }
