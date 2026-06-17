@@ -6,6 +6,7 @@ pub mod aead;
 pub mod csv_codec;
 pub mod entry;
 pub mod group;
+pub mod kat_tests;
 pub mod kdf;
 pub mod protocol;
 pub mod search;
