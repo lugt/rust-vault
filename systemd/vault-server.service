@@ -1,0 +1,23 @@
+[Unit]
+Description=Vault server (E2E password store)
+After=network.target
+
+[Service]
+Type=simple
+User=vault
+Group=vault
+WorkingDirectory=/var/lib/vault
+EnvironmentFile=/etc/vault/env
+ExecStart=/usr/local/bin/vault-server
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/vault
+LimitNOFILE=65536
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

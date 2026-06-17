@@ -1,0 +1,35 @@
+# ===== vault 反代 begin =====
+# 限流 zone 必须放在 http {} 顶层（不是 server {}）。
+# 请在 http { ... } 里添加（或确认已有）：
+#   limit_req_zone $binary_remote_addr zone=vault_api:10m rate=5r/s;
+#
+# 静态 Web 客户端（如要同站点托管 SPA，取消以下两行注释并调整 root）：
+# root /var/www/vault/web;
+# location = /keychain { return 301 /keychain/; }
+# location /keychain/ { try_files $uri $uri/ /keychain/index.html; }
+
+# API 反代：粘贴到既有 server { ... } 块内
+location /keychain/ {
+    # 去掉前缀 /keychain/，让 Rust 服务看到 /vault/...
+    rewrite ^/keychain/(.*)$ /$1 break;
+
+    # 限流（复用用户在 http{} 里定义的 vault_api zone）
+    limit_req zone=vault_api burst=10 nodelay;
+
+    proxy_pass http://127.0.0.1:8080;
+
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # 防 DoS：限制请求体
+    client_max_body_size 8m;
+
+    # 超时
+    proxy_connect_timeout 5s;
+    proxy_send_timeout    30s;
+    proxy_read_timeout    30s;
+}
+# ===== vault 反代 end =====
