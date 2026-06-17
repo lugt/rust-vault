@@ -4,3 +4,26 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+
+[lib]
+name = "vault_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "vault-cli"
+path = "src/main.rs"
+
+[dependencies]
+vault-core = { path = "../vault-core" }
+clap = { version = "4.5.7", features = ["derive"] }
+reqwest = { version = "0.12.7", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1.39.2", features = ["full"] }
+rpassword = "7.3.1"
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+dirs = "5.0.1"
+toml = "0.8.19"
+base64.workspace = true
