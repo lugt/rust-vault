@@ -6,6 +6,7 @@ pub mod aead;
 pub mod csv_codec;
 pub mod entry;
 pub mod kdf;
+pub mod search;
 pub mod types;
 pub mod wrap;
 
@@ -13,6 +14,7 @@ pub use aead::{decrypt, encrypt, AeadError};
 pub use csv_codec::{decode_csv, encode_csv, CsvError};
 pub use entry::Entry;
 pub use kdf::{derive_mk, KdfParams};
+pub use search::{jaccard, search, trigrams, Hit};
 pub use types::{ct_eq, Cek, EncryptedCsv, MasterKey, Salt, Version, WrappedCek};
 pub use wrap::{unwrap_cek, wrap_cek, WrapError};
 
@@ -243,5 +245,102 @@ mod tests {
         let bytes = encode_csv(&[e.clone()]).unwrap();
         let back = decode_csv(&bytes).unwrap();
         assert_eq!(back, vec![e]);
+    }
+
+    #[test]
+    fn trigrams_of_short_string() {
+        // 2-char input is below the 3-char trigram floor -> empty.
+        let t = trigrams("ab");
+        assert!(t.is_empty());
+    }
+
+    #[test]
+    fn jaccard_basic() {
+        let a = vec!["git".to_string(), "ith".to_string(), "hub".to_string()];
+        let b = vec![
+            "git".to_string(),
+            "ith".to_string(),
+            "hub".to_string(),
+            "ub ".to_string(),
+        ];
+        // intersection 3, union 4, Jaccard = 0.75
+        assert!((jaccard(&a, &b) - 0.75).abs() < 1e-9);
+    }
+
+    #[test]
+    fn search_githb_matches_github() {
+        let entries = vec![Entry::new(
+            "github".into(),
+            "https://github.com".into(),
+            "alice".into(),
+            "pw".into(),
+            "".into(),
+        )];
+        let hits = search("githb", &entries);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].score > 0.15, "score was {}", hits[0].score);
+    }
+
+    #[test]
+    fn search_no_match_returns_empty() {
+        let entries = vec![Entry::new(
+            "github".into(),
+            "https://github.com".into(),
+            "alice".into(),
+            "pw".into(),
+            "".into(),
+        )];
+        let hits = search("zzzqqqxxx", &entries);
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn search_key_colon_field_filter() {
+        let entries = vec![
+            Entry::new(
+                "github".into(),
+                "https://gmail.com".into(),
+                "alice".into(),
+                "pw".into(),
+                "".into(),
+            ),
+            Entry::new(
+                "gmail".into(),
+                "https://gmail.com".into(),
+                "bob".into(),
+                "pw".into(),
+                "".into(),
+            ),
+        ];
+        let hits = search("name:github", &entries);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].entry.name, "github");
+    }
+
+    #[test]
+    fn search_substring_bonus_helps() {
+        let entries = vec![Entry::new(
+            "my-very-long-name-12345".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+        )];
+        // "12345" is exact substring -> bonus pushes it over threshold
+        let hits = search("12345", &entries);
+        assert_eq!(hits.len(), 1);
+    }
+
+    #[test]
+    fn search_is_lowercase_and_nfc_normalized() {
+        let entries = vec![Entry::new(
+            "GitHub".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+        )];
+        let hits = search("GITHUB", &entries);
+        assert_eq!(hits.len(), 1);
     }
 }
