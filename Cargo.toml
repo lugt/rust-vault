@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/vault-core",
+    "crates/vault-server",
+    "crates/vault-cli",
+    "crates/vault-wasm",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.78"
+
+[workspace.dependencies]
+# Use 1.78-compatible versions; pin exact.
+serde = { version = "1.0.203", features = ["derive"] }
+serde_json = "1.0.117"
+thiserror = "1.0.61"
+anyhow = "1.0.86"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+zeroize = { version = "1.8.1", features = ["zeroize_derive"] }
+subtle = "2.6.1"
+chacha20poly1305 = "0.10.1"
+argon2 = "0.5.3"
+blake3 = "1.5.3"
+hkdf = "0.12.4"
+sha2 = "0.10.8"
+base64 = "0.22.1"
+rand = "0.8.5"
+getrandom = "0.2.15"
+url = "2.5.0"
+chrono = { version = "0.4.38", features = ["serde"] }

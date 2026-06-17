@@ -1,0 +1,23 @@
+[package]
+name = "vault-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+subtle.workspace = true
+chacha20poly1305.workspace = true
+argon2.workspace = true
+blake3.workspace = true
+hkdf.workspace = true
+sha2.workspace = true
+base64.workspace = true
+rand.workspace = true
+getrandom.workspace = true
+url.workspace = true
+chrono.workspace = true
