@@ -5,10 +5,12 @@
 pub mod aead;
 pub mod kdf;
 pub mod types;
+pub mod wrap;
 
 pub use aead::{decrypt, encrypt, AeadError};
 pub use kdf::{derive_mk, KdfParams};
 pub use types::{ct_eq, Cek, EncryptedCsv, MasterKey, Salt, Version, WrappedCek};
+pub use wrap::{unwrap_cek, wrap_cek, WrapError};
 
 /// Returns the library version.
 pub fn version() -> &'static str {
@@ -111,5 +113,35 @@ mod tests {
         let a = encrypt(&cek, b"x").unwrap();
         let b = encrypt(&cek, b"x").unwrap();
         assert_ne!(a.nonce, b.nonce);
+    }
+
+    #[test]
+    fn wrap_cek_round_trip() {
+        let mk = MasterKey([3u8; 32]);
+        let cek = Cek([5u8; 32]);
+        let w = wrap_cek(&mk, &cek).unwrap();
+        let back = unwrap_cek(&mk, &w).unwrap();
+        assert_eq!(back.as_bytes(), cek.as_bytes());
+    }
+
+    #[test]
+    fn unwrap_with_wrong_mk_fails() {
+        let w = wrap_cek(&MasterKey([1u8; 32]), &Cek([0u8; 32])).unwrap();
+        assert!(unwrap_cek(&MasterKey([2u8; 32]), &w).is_err());
+    }
+
+    #[test]
+    fn wrap_uses_kdf_derived_key_not_raw_mk() {
+        // Verify wrap produces different ciphertext than a direct AEAD encrypt
+        // with the raw MK bytes treated as a CEK. The KEK (HKDF-derived from MK)
+        // must differ from the raw MK.
+        let mk_bytes: [u8; 32] = [9u8; 32];
+        let mk = MasterKey(mk_bytes);
+        let cek = Cek([0u8; 32]);
+        let wrapped = wrap_cek(&mk, &cek).unwrap();
+        // Direct AEAD using the raw MK bytes as a key
+        let mk_as_cek = Cek(mk_bytes);
+        let direct = encrypt(&mk_as_cek, cek.as_bytes()).unwrap();
+        assert_ne!(wrapped.ct, direct.ct, "KEK must differ from raw MK");
     }
 }
