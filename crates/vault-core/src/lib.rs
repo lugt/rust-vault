@@ -7,6 +7,7 @@ pub mod csv_codec;
 pub mod entry;
 pub mod group;
 pub mod kdf;
+pub mod protocol;
 pub mod search;
 pub mod types;
 pub mod wrap;
@@ -16,6 +17,9 @@ pub use csv_codec::{decode_csv, encode_csv, CsvError};
 pub use entry::Entry;
 pub use group::{group_by_domain, group_by_letter, group_by_tag, Grouped};
 pub use kdf::{derive_mk, KdfParams};
+pub use protocol::{
+    b64_decode, b64_encode, CipherBlock, KdfJson, VaultRekey, VaultSnapshot, VaultWrite,
+};
 pub use search::{jaccard, search, trigrams, Hit};
 pub use types::{ct_eq, Cek, EncryptedCsv, MasterKey, Salt, Version, WrappedCek};
 pub use wrap::{unwrap_cek, wrap_cek, WrapError};
@@ -412,5 +416,21 @@ mod tests {
         assert_eq!(g.get("A").map(|v| v.len()), Some(2));
         assert_eq!(g.get("B").map(|v| v.len()), Some(1));
         assert_eq!(g.get("#").map(|v| v.len()), Some(1));
+    }
+
+    #[test]
+    fn snapshot_serde_round_trip() {
+        let json = r#"{
+          "version": 1,
+          "salt": "AAAAAAAAAAAAAAAAAAAAAA==",
+          "wrapped_cek": {"nonce": "AAAAAAAAAAAAAAAAAAAAAAAA", "ct": "AAAA"},
+          "ciphertext": {"nonce": "AAAAAAAAAAAAAAAAAAAAAAAA", "ct": "AAAA"},
+          "kdf": {"algo": "argon2id", "m": 65536, "t": 3, "p": 1},
+          "created_at": "2026-06-17T00:00:00Z"
+        }"#;
+        let snap: VaultSnapshot = serde_json::from_str(json).unwrap();
+        assert_eq!(snap.version, 1);
+        let back = serde_json::to_string(&snap).unwrap();
+        assert!(back.contains("\"version\":1"));
     }
 }
