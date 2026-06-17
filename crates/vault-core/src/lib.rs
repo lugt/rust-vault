@@ -3,11 +3,15 @@
 //! E2E encryption core for mypass vault.
 
 pub mod aead;
+pub mod csv_codec;
+pub mod entry;
 pub mod kdf;
 pub mod types;
 pub mod wrap;
 
 pub use aead::{decrypt, encrypt, AeadError};
+pub use csv_codec::{decode_csv, encode_csv, CsvError};
+pub use entry::Entry;
 pub use kdf::{derive_mk, KdfParams};
 pub use types::{ct_eq, Cek, EncryptedCsv, MasterKey, Salt, Version, WrappedCek};
 pub use wrap::{unwrap_cek, wrap_cek, WrapError};
@@ -143,5 +147,101 @@ mod tests {
         let mk_as_cek = Cek(mk_bytes);
         let direct = encrypt(&mk_as_cek, cek.as_bytes()).unwrap();
         assert_ne!(wrapped.ct, direct.ct, "KEK must differ from raw MK");
+    }
+
+    #[test]
+    fn entry_domain_extraction() {
+        let e = Entry::new(
+            "github".into(),
+            "https://github.com/login".into(),
+            "alice".into(),
+            "pw".into(),
+            "".into(),
+        );
+        assert_eq!(e.domain(), "github.com");
+    }
+
+    #[test]
+    fn entry_domain_ip_fallback() {
+        let e = Entry::new(
+            "router".into(),
+            "http://192.168.0.1/".into(),
+            "admin".into(),
+            "pw".into(),
+            "".into(),
+        );
+        assert_eq!(e.domain(), "192.168.0.1");
+    }
+
+    #[test]
+    fn entry_tags_from_note() {
+        let e = Entry::new(
+            "x".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "important #Work #EMAIL".into(),
+        );
+        let tags = e.tags();
+        assert_eq!(tags, vec!["work".to_string(), "email".to_string()]);
+    }
+
+    #[test]
+    fn entry_no_tags_when_no_hash() {
+        let e = Entry::new(
+            "x".into(),
+            "".into(),
+            "".into(),
+            "".into(),
+            "just a plain note".into(),
+        );
+        assert!(e.tags().is_empty());
+    }
+
+    #[test]
+    fn csv_round_trip() {
+        let entries = vec![
+            Entry::new(
+                "a".into(),
+                "https://a.com".into(),
+                "u".into(),
+                "p".into(),
+                "n".into(),
+            ),
+            Entry::new(
+                "b, inc".into(),
+                "".into(),
+                "".into(),
+                "p\"q".into(),
+                "#tag1".into(),
+            ),
+        ];
+        let bytes = encode_csv(&entries).unwrap();
+        let back = decode_csv(&bytes).unwrap();
+        assert_eq!(back, entries);
+    }
+
+    #[test]
+    fn csv_decodes_sample() {
+        let sample = b"name,url,username,password,note\n\
+                      192.168.0.9,https://192.168.0.9/,admin,mamapangpang,\n";
+        let entries = decode_csv(sample).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "192.168.0.9");
+        assert_eq!(entries[0].username, "admin");
+    }
+
+    #[test]
+    fn csv_handles_unicode() {
+        let e = Entry::new(
+            "\u{4e2d}\u{6587}".into(),
+            "https://\u{4f8b}\u{3048}.jp/".into(),
+            "\u{7528}\u{6237}".into(),
+            "\u{5bc6}\u{7801}".into(),
+            "\u{5907}\u{6ce8} #\u{4ed5}\u{4e8b}".into(),
+        );
+        let bytes = encode_csv(&[e.clone()]).unwrap();
+        let back = decode_csv(&bytes).unwrap();
+        assert_eq!(back, vec![e]);
     }
 }

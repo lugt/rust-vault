@@ -1,0 +1,220 @@
+# Review package: 9f109b2d81fd50b0083e86c15d01559fa7bb9f99..29ede3ec74e6e2e4accbd806471a359252517c44
+
+## Commits
+29ede3e feat(vault-core): newtype wrappers (Salt/Cek/MasterKey/WrappedCek/Version)
+
+## Files changed
+ crates/vault-core/src/lib.rs   |  29 ++++++++
+ crates/vault-core/src/types.rs | 152 +++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 181 insertions(+)
+
+## Diff
+diff --git a/crates/vault-core/src/lib.rs b/crates/vault-core/src/lib.rs
+index 96413cc..6284616 100644
+--- a/crates/vault-core/src/lib.rs
++++ b/crates/vault-core/src/lib.rs
+@@ -1,17 +1,46 @@
+ #![forbid(unsafe_code)]
+ #![deny(missing_docs)]
+ //! E2E encryption core for mypass vault.
+ 
++pub mod types;
++
++pub use types::{ct_eq, Cek, EncryptedCsv, MasterKey, Salt, Version, WrappedCek};
++
+ /// Returns the library version.
+ pub fn version() -> &'static str {
+     env!("CARGO_PKG_VERSION")
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+     #[test]
+     fn version_is_non_empty() {
+         assert!(!version().is_empty());
+     }
++
++    #[test]
++    fn salt_zero_array_works() {
++        use crate::types::Salt;
++        let s = Salt([0u8; 16]);
++        assert_eq!(s.as_bytes().len(), 16);
++    }
++
++    #[test]
++    fn wrapped_cek_rejects_wrong_length() {
++        use crate::types::WrappedCek;
++        let r = WrappedCek::from_bytes(&[0u8; 10]);
++        assert!(r.is_err());
++    }
++
++    #[test]
++    fn version_saturates_at_u64_max() {
++        use crate::types::Version;
++        let v = Version(10);
++        let next = v.increment_saturating();
++        assert_eq!(next.0, 11);
++        let max = Version(u64::MAX);
++        let max_next = max.increment_saturating();
++        assert_eq!(max_next.0, u64::MAX);
++    }
+ }
+diff --git a/crates/vault-core/src/types.rs b/crates/vault-core/src/types.rs
+new file mode 100644
+index 0000000..dafa70e
+--- /dev/null
++++ b/crates/vault-core/src/types.rs
+@@ -0,0 +1,152 @@
++//! Newtype wrappers for keys, ciphertexts, and metadata.
++
++use subtle::ConstantTimeEq;
++use zeroize::{Zeroize, ZeroizeOnDrop};
++
++/// Argon2id salt, 16 bytes.
++#[derive(Clone, Zeroize, ZeroizeOnDrop)]
++pub struct Salt(pub [u8; 16]);
++
++impl Salt {
++    /// Random salt.
++    pub fn random() -> Self {
++        use rand::RngCore;
++        let mut s = [0u8; 16];
++        rand::thread_rng().fill_bytes(&mut s);
++        Self(s)
++    }
++    /// Returns the salt bytes.
++    pub fn as_bytes(&self) -> &[u8] {
++        &self.0
++    }
++    /// Creates a salt from a byte slice.
++    pub fn from_bytes(b: &[u8]) -> Result<Self, TypeError> {
++        if b.len() != 16 {
++            return Err(TypeError::SaltLength(b.len()));
++        }
++        let mut a = [0u8; 16];
++        a.copy_from_slice(b);
++        Ok(Self(a))
++    }
++}
++
++/// Master key derived from the user's password. Stays on client.
++#[derive(Zeroize, ZeroizeOnDrop)]
++pub struct MasterKey(pub [u8; 32]);
++
++impl MasterKey {
++    /// Returns the master key bytes.
++    pub fn as_bytes(&self) -> &[u8] {
++        &self.0
++    }
++}
++
++/// Content encryption key, random 32 bytes, used to encrypt the CSV.
++#[derive(Zeroize, ZeroizeOnDrop)]
++pub struct Cek(pub [u8; 32]);
++impl Cek {
++    /// Generates a random CEK.
++    pub fn random() -> Self {
++        use rand::RngCore;
++        let mut k = [0u8; 32];
++        rand::thread_rng().fill_bytes(&mut k);
++        Self(k)
++    }
++    /// Returns the CEK bytes.
++    pub fn as_bytes(&self) -> &[u8] {
++        &self.0
++    }
++}
++
++/// Wrapped CEK: 24-byte XChaCha20 nonce + 48-byte ciphertext (32B CEK + 16B tag).
++#[derive(Clone)]
++pub struct WrappedCek {
++    /// The XChaCha20 nonce.
++    pub nonce: [u8; 24],
++    /// The wrapped CEK ciphertext.
++    pub ct: Vec<u8>,
++}
++impl WrappedCek {
++    /// Parses a wrapped CEK from bytes.
++    pub fn from_bytes(b: &[u8]) -> Result<Self, TypeError> {
++        if b.len() < 24 {
++            return Err(TypeError::WrappedCekLength(b.len()));
++        }
++        let mut nonce = [0u8; 24];
++        nonce.copy_from_slice(&b[..24]);
++        let ct = b[24..].to_vec();
++        Ok(Self { nonce, ct })
++    }
++    /// Serializes the wrapped CEK to bytes.
++    pub fn to_bytes(&self) -> Vec<u8> {
++        let mut v = Vec::with_capacity(24 + self.ct.len());
++        v.extend_from_slice(&self.nonce);
++        v.extend_from_slice(&self.ct);
++        v
++    }
++    /// Returns the length of the ciphertext portion.
++    pub fn ct_len(&self) -> usize {
++        self.ct.len()
++    }
++}
++
++/// AEAD ciphertext: 24-byte nonce + N + 16-byte tag.
++#[derive(Clone)]
++pub struct EncryptedCsv {
++    /// The XChaCha20 nonce.
++    pub nonce: [u8; 24],
++    /// The encrypted CSV ciphertext.
++    pub ct: Vec<u8>,
++}
++impl EncryptedCsv {
++    /// Parses encrypted CSV from bytes.
++    pub fn from_bytes(b: &[u8]) -> Result<Self, TypeError> {
++        if b.len() < 24 + 16 {
++            return Err(TypeError::EncryptedCsvLength(b.len()));
++        }
++        let mut nonce = [0u8; 24];
++        nonce.copy_from_slice(&b[..24]);
++        let ct = b[24..].to_vec();
++        Ok(Self { nonce, ct })
++    }
++    /// Serializes the encrypted CSV to bytes.
++    pub fn to_bytes(&self) -> Vec<u8> {
++        let mut v = Vec::with_capacity(24 + self.ct.len());
++        v.extend_from_slice(&self.nonce);
++        v.extend_from_slice(&self.ct);
++        v
++    }
++}
++
++/// Monotonic version number. Saturates at u64::MAX.
++#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
++pub struct Version(pub u64);
++impl Version {
++    /// Increments the version, saturating at u64::MAX.
++    pub fn increment_saturating(self) -> Self {
++        Self(self.0.saturating_add(1))
++    }
++    /// Returns the version as a u64.
++    pub fn as_u64(self) -> u64 {
++        self.0
++    }
++}
++
++/// Constant-time compare for two byte slices.
++pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
++    a.ct_eq(b).into()
++}
++
++/// Error type for type parsing operations.
++#[derive(thiserror::Error, Debug)]
++pub enum TypeError {
++    /// Salt must be exactly 16 bytes.
++    #[error("salt must be 16 bytes, got {0}")]
++    SaltLength(usize),
++    /// Wrapped CEK must be at least 24 bytes.
++    #[error("wrapped_cek must be at least 24 bytes, got {0}")]
++    WrappedCekLength(usize),
++    /// Encrypted CSV must be at least 40 bytes (24 nonce + 16 tag minimum).
++    #[error("encrypted_csv must be at least 40 bytes, got {0}")]
++    EncryptedCsvLength(usize),
++}

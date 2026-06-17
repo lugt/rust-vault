@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/gtx/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.0/skills/subagent-driven-development/**)",
+      "Read(//home/gtx/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.0/skills/subagent-driven-development/scripts/**)"
+    ]
+  }
+}

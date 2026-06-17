@@ -21,3 +21,5 @@ rand.workspace = true
 getrandom.workspace = true
 url.workspace = true
 chrono.workspace = true
+csv.workspace = true
+unicode-normalization.workspace = true
