@@ -120,15 +120,20 @@ pub async fn put_vault(
     let ts = chrono::Utc::now().to_rfc3339();
     let new_v = expected.increment_saturating();
 
-    let res = state
+    let store = state
         .store
         .lock()
-        .map_err(|e| ServerError::Internal(format!("store lock poisoned: {e}")))?
-        .put_if_match(expected, new_v, &salt, &wrapped, &ct, &kdf_params, &ts);
+        .map_err(|e| ServerError::Internal(format!("store lock poisoned: {e}")))?;
+    // If-Match: 0 with no existing snapshot = first-time put.
+    if expected.as_u64() == 0 && store.get_snapshot()?.is_none() {
+        store.put_snapshot(new_v, &salt, &wrapped, &ct, &kdf_params, &ts)?;
+        return Ok(Json(json!({ "version": new_v.as_u64() })));
+    }
+    let res = store.put_if_match(expected, new_v, &salt, &wrapped, &ct, &kdf_params, &ts);
+    drop(store);
     match res {
         Ok(()) => Ok(Json(json!({ "version": new_v.as_u64() }))),
         Err(ServerError::Store(crate::store::StoreError::VersionConflict { current, .. })) => {
-            // Build a 409 response with the current state.
             Err(ServerError::VersionConflict {
                 current,
                 salt,
