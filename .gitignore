@@ -3,3 +3,6 @@
 Cargo.lock.bak
 *.swp
 .DS_Store
+
+# 历史已抹除，停止追踪
+sample.csv
