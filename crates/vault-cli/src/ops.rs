@@ -301,3 +301,77 @@ pub async fn run_rekey(old_password: String, new_password: String) -> anyhow::Re
     println!("Rekeyed to v{}.", v["version"]);
     Ok(())
 }
+
+/// GET `/vault/history` — print all archived versions + current version.
+pub async fn run_history() -> anyhow::Result<()> {
+    let cfg = CliConfig::load()?;
+    let res = client()
+        .get(format!("{}/history", cfg.api))
+        .header("authorization", format!("Bearer {}", cfg.token))
+        .send()
+        .await?;
+    if !res.status().is_success() {
+        anyhow::bail!("GET history failed: {} {}", res.status(), res.text().await?);
+    }
+    let body: serde_json::Value = res.json().await?;
+    match &body["current_version"] {
+        serde_json::Value::Null => println!("current: (empty)"),
+        serde_json::Value::Number(n) => println!("current: v{}", n),
+        _ => {}
+    }
+    let arr = body["history"].as_array().cloned().unwrap_or_default();
+    if arr.is_empty() {
+        println!("history: (none)");
+    } else {
+        println!("history:");
+        for h in arr {
+            println!("  v{}  archived_at={}", h["version"], h["archived_at"]);
+        }
+    }
+    Ok(())
+}
+
+/// POST `/vault/clear` — archive current + empty vault.
+pub async fn run_clear(force: bool) -> anyhow::Result<()> {
+    let cfg = CliConfig::load()?;
+    if !force {
+        eprint!("This will wipe the current vault (kept in history). Continue? [y/N] ");
+        let mut s = String::new();
+        std::io::stdin().read_line(&mut s)?;
+        if !s.trim().eq_ignore_ascii_case("y") {
+            println!("Aborted.");
+            return Ok(());
+        }
+    }
+    let res = client()
+        .post(format!("{}/clear", cfg.api))
+        .header("authorization", format!("Bearer {}", cfg.token))
+        .send()
+        .await?;
+    if !res.status().is_success() {
+        anyhow::bail!("POST clear failed: {} {}", res.status(), res.text().await?);
+    }
+    println!("Cleared. Current snapshot archived to history.");
+    Ok(())
+}
+
+/// POST `/vault/recover` — restore an archived version as the new current.
+pub async fn run_recover(from_version: u64) -> anyhow::Result<()> {
+    let cfg = CliConfig::load()?;
+    let res = client()
+        .post(format!("{}/recover", cfg.api))
+        .header("authorization", format!("Bearer {}", cfg.token))
+        .json(&serde_json::json!({ "from_version": from_version }))
+        .send()
+        .await?;
+    if !res.status().is_success() {
+        anyhow::bail!(
+            "POST recover failed: {} {}",
+            res.status(),
+            res.text().await?
+        );
+    }
+    let v: serde_json::Value = res.json().await?;
+    println!("Recovered as v{}.", v["version"]);
+    Ok(())
+}

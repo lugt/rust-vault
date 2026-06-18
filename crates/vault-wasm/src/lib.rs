@@ -1,12 +1,12 @@
 //! WASM bindings for the vault core. Exposes `unlock` + `search` + `group`
-//! to JavaScript.
+//! + `put_entries` + `rekey` to JavaScript.
 
 use vault_core::{
     aead, csv_codec,
     kdf::{derive_mk, KdfParams},
-    protocol::b64_decode,
-    types::{EncryptedCsv, Salt, WrappedCek},
-    wrap::unwrap_cek,
+    protocol::{b64_decode, b64_encode, CipherBlock, KdfJson, VaultRekey, VaultWrite},
+    types::{Cek, EncryptedCsv, Salt, WrappedCek},
+    wrap::{unwrap_cek, wrap_cek},
 };
 use wasm_bindgen::prelude::*;
 
@@ -14,6 +14,18 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub struct VaultHandle {
     entries: Vec<vault_core::Entry>,
+    /// Kept around so the JS side can call `put_entries` without re-deriving.
+    pub(crate) current_password: String,
+    /// Decrypted CEK so rekey + put don't have to re-decrypt the snapshot.
+    pub(crate) current_cek: Option<Cek>,
+}
+
+impl VaultHandle {
+    fn cek(&self) -> Result<&Cek, String> {
+        self.current_cek
+            .as_ref()
+            .ok_or_else(|| "vault not unlocked yet".to_string())
+    }
 }
 
 /// Decrypts a snapshot and returns a handle to the in-memory vault.
@@ -54,7 +66,11 @@ pub fn unlock(password: &str, snapshot_json: &str) -> Result<VaultHandle, JsValu
     let entries =
         csv_codec::decode_csv(&pt).map_err(|e| JsValue::from_str(&format!("csv: {e}")))?;
 
-    Ok(VaultHandle { entries })
+    Ok(VaultHandle {
+        entries,
+        current_password: password.to_string(),
+        current_cek: Some(cek),
+    })
 }
 
 #[wasm_bindgen]
@@ -65,23 +81,26 @@ impl VaultHandle {
         self.entries.len()
     }
 
-    /// Returns the decrypted entries as a JSON array (name/url/username only).
+    /// Returns the decrypted entries as a JSON array.
     #[wasm_bindgen]
     pub fn all(&self) -> Result<JsValue, JsValue> {
-        let v: Vec<serde_json::Value> = self
-            .entries
-            .iter()
-            .map(|e| {
-                serde_json::json!({
-                    "name": e.name,
-                    "url": e.url,
-                    "username": e.username,
-                    "password": e.password,
-                    "note": e.note,
-                })
-            })
-            .collect();
+        let v: Vec<serde_json::Value> = self.entries.iter().map(entry_to_json).collect();
         serde_wasm_bindgen::to_value(&v).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Replace the in-memory entry list with the given JSON array, returning
+    /// the new (in-memory) count. Does NOT encrypt or send to the server.
+    /// Call `put_entries` to persist.
+    #[wasm_bindgen]
+    pub fn set_entries(&mut self, json: JsValue) -> Result<usize, JsValue> {
+        let arr: Vec<serde_json::Value> = serde_wasm_bindgen::from_value(json)
+            .map_err(|e| JsValue::from_str(&format!("parse: {e}")))?;
+        let mut new_entries = Vec::with_capacity(arr.len());
+        for v in arr {
+            new_entries.push(json_to_entry(&v)?);
+        }
+        self.entries = new_entries;
+        Ok(self.entries.len())
     }
 
     /// Search with a query string. Returns hits sorted by score desc.
@@ -91,14 +110,11 @@ impl VaultHandle {
         let v: Vec<serde_json::Value> = hits
             .iter()
             .map(|h| {
-                serde_json::json!({
-                    "name": h.entry.name,
-                    "url": h.entry.url,
-                    "username": h.entry.username,
-                    "password": h.entry.password,
-                    "note": h.entry.note,
-                    "score": h.score,
-                })
+                let mut j = entry_to_json(&h.entry);
+                j.as_object_mut()
+                    .unwrap()
+                    .insert("score".into(), serde_json::json!(h.score));
+                j
             })
             .collect();
         serde_wasm_bindgen::to_value(&v).map_err(|e| JsValue::from_str(&e.to_string()))
@@ -138,4 +154,90 @@ impl VaultHandle {
             .collect();
         serde_wasm_bindgen::to_value(&v).map_err(|e| JsValue::from_str(&e.to_string()))
     }
+
+    /// Encrypt the current in-memory entries to a `VaultWrite` JSON. The
+    /// caller (JS) then PUTs this to `/vault` with the matching `If-Match`.
+    #[wasm_bindgen]
+    pub fn put_entries(&self) -> Result<String, JsValue> {
+        let csv = csv_codec::encode_csv(&self.entries)
+            .map_err(|e| JsValue::from_str(&format!("encode: {e}")))?;
+        let cek = self.cek().map_err(|e| JsValue::from_str(&e))?;
+        let enc =
+            aead::encrypt(cek, &csv).map_err(|e| JsValue::from_str(&format!("encrypt: {e}")))?;
+
+        let salt = Salt::random();
+        let params = KdfParams::default();
+        let mk = derive_mk(self.current_password.as_bytes(), &salt, &params)
+            .map_err(|e| JsValue::from_str(&format!("kdf: {e}")))?;
+        let wrapped = wrap_cek(&mk, &cek).map_err(|e| JsValue::from_str(&format!("wrap: {e}")))?;
+
+        let write = VaultWrite {
+            salt: b64_encode(salt.as_bytes()),
+            wrapped_cek: CipherBlock {
+                nonce: b64_encode(&wrapped.nonce),
+                ct: b64_encode(&wrapped.ct),
+            },
+            ciphertext: CipherBlock {
+                nonce: b64_encode(&enc.nonce),
+                ct: b64_encode(&enc.ct),
+            },
+            kdf: KdfJson {
+                algo: "argon2id".into(),
+                m: params.m_cost_kib,
+                t: params.t_cost,
+                p: params.p_cost,
+            },
+        };
+        serde_json::to_string(&write).map_err(|e| JsValue::from_str(&format!("serialize: {e}")))
+    }
+
+    /// Re-wrap the CEK under a new master password. Returns a `VaultRekey`
+    /// JSON. The caller (JS) then POSTs to `/vault/rekey`. The new password
+    /// becomes the active password for subsequent puts.
+    #[wasm_bindgen]
+    pub fn rekey(&mut self, new_password: &str) -> Result<String, JsValue> {
+        let cek = self.cek().map_err(|e| JsValue::from_str(&e))?;
+        let new_salt = Salt::random();
+        let new_params = KdfParams::default();
+        let new_mk = derive_mk(new_password.as_bytes(), &new_salt, &new_params)
+            .map_err(|e| JsValue::from_str(&format!("kdf: {e}")))?;
+        let new_wrapped =
+            wrap_cek(&new_mk, cek).map_err(|e| JsValue::from_str(&format!("wrap: {e}")))?;
+
+        let body = VaultRekey {
+            salt: b64_encode(new_salt.as_bytes()),
+            wrapped_cek: CipherBlock {
+                nonce: b64_encode(&new_wrapped.nonce),
+                ct: b64_encode(&new_wrapped.ct),
+            },
+            kdf: KdfJson {
+                algo: "argon2id".into(),
+                m: new_params.m_cost_kib,
+                t: new_params.t_cost,
+                p: new_params.p_cost,
+            },
+        };
+        self.current_password = new_password.to_string();
+        serde_json::to_string(&body).map_err(|e| JsValue::from_str(&format!("serialize: {e}")))
+    }
+}
+
+fn entry_to_json(e: &vault_core::Entry) -> serde_json::Value {
+    serde_json::json!({
+        "name": e.name,
+        "url": e.url,
+        "username": e.username,
+        "password": e.password,
+        "note": e.note,
+    })
+}
+
+fn json_to_entry(v: &serde_json::Value) -> Result<vault_core::Entry, JsValue> {
+    Ok(vault_core::Entry {
+        name: v["name"].as_str().unwrap_or("").to_string(),
+        url: v["url"].as_str().unwrap_or("").to_string(),
+        username: v["username"].as_str().unwrap_or("").to_string(),
+        password: v["password"].as_str().unwrap_or("").to_string(),
+        note: v["note"].as_str().unwrap_or("").to_string(),
+    })
 }

@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
+  <!-- Lock screen -->
   <div id="lock-screen">
     <h1>Vault</h1>
     <p class="muted">E2E encrypted password vault</p>
@@ -27,12 +28,13 @@
     </details>
   </div>
 
+  <!-- Main app -->
   <div id="app" hidden>
     <aside id="sidebar">
       <div class="search-box-wrap">
         <input id="search-box" type="search" placeholder="搜索...  (name:github tag:work)">
       </div>
-      <div id="status-bar"><span id="entry-count">0</span> 条目</div>
+      <div id="status-bar"><span id="entry-count">0</span> 条目 · <span id="version-info">v?</span> · 脏:<span id="dirty-flag">否</span></div>
       <div id="groups"></div>
     </aside>
     <main>
@@ -51,7 +53,30 @@
         </dl>
       </div>
     </main>
-    <button id="lock-btn" title="锁定并清除内存">🔒</button>
+
+    <!-- Top action bar -->
+    <div id="action-bar">
+      <button id="lock-btn" title="锁定并清除内存">🔒 锁</button>
+      <button id="add-btn" title="新增条目">➕ 新增</button>
+      <button id="edit-btn" title="编辑当前条目">✏️ 编辑</button>
+      <button id="delete-btn" title="删除当前条目">🗑 删除</button>
+      <button id="save-btn" title="保存到服务器">💾 保存</button>
+      <button id="rekey-btn" title="更换主口令">🔑 换密码</button>
+      <button id="history-btn" title="查看历史">📜 历史</button>
+      <button id="clear-btn" title="清空当前 vault">⚠️ 清空</button>
+    </div>
+  </div>
+
+  <!-- Modal dialog (reused for edit/rekey/history/clear) -->
+  <div id="modal-bg" hidden>
+    <div id="modal">
+      <div id="modal-header">
+        <h2 id="modal-title"></h2>
+        <button id="modal-close">×</button>
+      </div>
+      <div id="modal-body"></div>
+      <div id="modal-footer"></div>
+    </div>
   </div>
 
   <script type="module" src="app.js"></script>

@@ -70,6 +70,22 @@ pub enum Cmd {
         #[arg(value_enum)]
         by: GroupBy,
     },
+    /// List archived versions on the server.
+    History,
+    /// Wipe the current vault; the current snapshot is archived to history.
+    /// The next `init` will re-create the vault. (Destructive.)
+    Clear {
+        /// Skip the confirmation prompt.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Restore an archived version as the new current. The restored snapshot
+    /// is still encrypted with the OLD master password.
+    Recover {
+        /// Version number from history to restore.
+        #[arg(long)]
+        from_version: u64,
+    },
 }
 
 /// Axis for the `group` command.

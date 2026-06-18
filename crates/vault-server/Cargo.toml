@@ -18,7 +18,7 @@ vault-core = { path = "../vault-core" }
 axum = "0.7.5"
 tokio = { version = "1.39.2", features = ["full"] }
 tower = "0.5.0"
-tower-http = { version = "0.6.1", features = ["limit", "trace"] }
+tower-http = { version = "0.6.1", features = ["limit", "trace", "cors"] }
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 serde.workspace = true
 serde_json.workspace = true

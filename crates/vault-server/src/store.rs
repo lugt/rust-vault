@@ -22,6 +22,15 @@ pub struct StoredSnapshot {
     pub created_at: String,
 }
 
+/// Metadata about an archived version in `vault_history`.
+#[derive(Debug, Clone)]
+pub struct HistoryEntry {
+    /// Version number archived.
+    pub version: Version,
+    /// When the snapshot was archived (moved to history).
+    pub archived_at: String,
+}
+
 /// Wrapper around the SQLite connection.
 pub struct Store {
     conn: Connection,
@@ -154,6 +163,91 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+
+    /// List all archived snapshots, newest first.
+    pub fn list_history(&self) -> Result<Vec<HistoryEntry>, ServerError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT version, archived_at FROM vault_history ORDER BY archived_at DESC")?;
+        let mut rows = stmt.query([])?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next()? {
+            out.push(HistoryEntry {
+                version: Version(row.get::<_, i64>(0)? as u64),
+                archived_at: row.get(1)?,
+            });
+        }
+        Ok(out)
+    }
+
+    /// Archive the current snapshot to `vault_history`, then delete the
+    /// current row. After this, `get_snapshot()` returns `None` and the next
+    /// PUT must use `If-Match: 0` (init-style).
+    pub fn clear_current(&self, ts: &str) -> Result<(), ServerError> {
+        let tx = self.conn.unchecked_transaction()?;
+        // Move the current row into history, preserving the version.
+        tx.execute(
+            "INSERT OR REPLACE INTO vault_history
+                (version, salt, wrapped_cek, ciphertext, kdf_params, archived_at)
+             SELECT version, salt, wrapped_cek, ciphertext, kdf_params, ?1
+             FROM vault WHERE id = 1",
+            params![ts],
+        )?;
+        // Delete the current row.
+        tx.execute("DELETE FROM vault WHERE id = 1", [])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Restore an archived version as the new current. Copies the snapshot
+    /// bytes from `vault_history[version]` to `vault` with `new_version`.
+    /// The version is bumped to `new_version` (typically current+1) so
+    /// subsequent PUTs use the new version as the If-Match value.
+    pub fn restore_from_history(
+        &self,
+        from_version: Version,
+        new_version: Version,
+        ts: &str,
+    ) -> Result<(), ServerError> {
+        let tx = self.conn.unchecked_transaction()?;
+        // Make sure the requested history row exists.
+        let exists: i64 = tx
+            .query_row(
+                "SELECT COUNT(*) FROM vault_history WHERE version = ?1",
+                params![from_version.as_u64() as i64],
+                |r| r.get(0),
+            )
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => ServerError::Store(StoreError::NotFound),
+                other => ServerError::Rusqlite(other),
+            })?;
+        if exists == 0 {
+            return Err(ServerError::Store(StoreError::NotFound));
+        }
+        // Archive whatever is current right now (so the recover is itself
+        // a history event and can be undone).
+        tx.execute(
+            "INSERT OR REPLACE INTO vault_history
+                (version, salt, wrapped_cek, ciphertext, kdf_params, archived_at)
+             SELECT version, salt, wrapped_cek, ciphertext, kdf_params, ?1
+             FROM vault WHERE id = 1",
+            params![ts],
+        )?;
+        // Copy the requested history row into current with the new version.
+        tx.execute(
+            "INSERT OR REPLACE INTO vault
+                (id, version, salt, wrapped_cek, ciphertext, kdf_params, created_at)
+             SELECT 1, ?1, salt, wrapped_cek, ciphertext, kdf_params, ?2
+             FROM vault_history WHERE version = ?3",
+            params![
+                new_version.as_u64() as i64,
+                ts,
+                from_version.as_u64() as i64
+            ],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -210,5 +304,57 @@ mod tests {
             err,
             ServerError::Store(StoreError::VersionConflict { .. })
         ));
+    }
+
+    #[test]
+    fn list_history_initially_empty() {
+        let s = tmp_db();
+        assert!(s.list_history().unwrap().is_empty());
+    }
+
+    #[test]
+    fn clear_archives_and_empties_current() {
+        let s = tmp_db();
+        s.put_snapshot(Version(1), b"s", b"w", b"c", b"{}", "t1")
+            .unwrap();
+        s.put_if_match(Version(1), Version(2), b"s", b"w2", b"c2", b"{}", "t2")
+            .unwrap();
+        // After 2 PUTs, history contains v1, current is v2.
+        let hist = s.list_history().unwrap();
+        assert_eq!(hist.len(), 1);
+        assert_eq!(hist[0].version, Version(1));
+
+        s.clear_current("t3").unwrap();
+        assert!(s.get_snapshot().unwrap().is_none());
+        // History now contains v1 and v2 (the latter just added by clear).
+        let hist = s.list_history().unwrap();
+        assert_eq!(hist.len(), 2);
+    }
+
+    #[test]
+    fn restore_from_history_makes_old_version_current() {
+        let s = tmp_db();
+        s.put_snapshot(Version(1), b"s", b"w1", b"c1", b"{}", "t1")
+            .unwrap();
+        s.put_if_match(Version(1), Version(2), b"s", b"w2", b"c2", b"{}", "t2")
+            .unwrap();
+        // Restore v1 as new v3.
+        s.restore_from_history(Version(1), Version(3), "t3")
+            .unwrap();
+        let cur = s.get_snapshot().unwrap().unwrap();
+        assert_eq!(cur.version, Version(3));
+        assert_eq!(cur.wrapped_cek, b"w1");
+        assert_eq!(cur.ciphertext, b"c1");
+    }
+
+    #[test]
+    fn restore_from_unknown_version_fails() {
+        let s = tmp_db();
+        s.put_snapshot(Version(1), b"s", b"w", b"c", b"{}", "t1")
+            .unwrap();
+        let err = s
+            .restore_from_history(Version(99), Version(2), "t2")
+            .unwrap_err();
+        assert!(matches!(err, ServerError::Store(StoreError::NotFound)));
     }
 }

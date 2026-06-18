@@ -9,7 +9,7 @@ export class VaultHandle {
     free(): void;
     [Symbol.dispose](): void;
     /**
-     * Returns the decrypted entries as a JSON array (name/url/username only).
+     * Returns the decrypted entries as a JSON array.
      */
     all(): any;
     /**
@@ -29,9 +29,26 @@ export class VaultHandle {
      */
     group_by_tag(): any;
     /**
+     * Encrypt the current in-memory entries to a `VaultWrite` JSON. The
+     * caller (JS) then PUTs this to `/vault` with the matching `If-Match`.
+     */
+    put_entries(): string;
+    /**
+     * Re-wrap the CEK under a new master password. Returns a `VaultRekey`
+     * JSON. The caller (JS) then POSTs to `/vault/rekey`. The new password
+     * becomes the active password for subsequent puts.
+     */
+    rekey(new_password: string): string;
+    /**
      * Search with a query string. Returns hits sorted by score desc.
      */
     search(query: string): any;
+    /**
+     * Replace the in-memory entry list with the given JSON array, returning
+     * the new (in-memory) count. Does NOT encrypt or send to the server.
+     * Call `put_entries` to persist.
+     */
+    set_entries(json: any): number;
 }
 
 /**
@@ -50,11 +67,17 @@ export interface InitOutput {
     readonly vaulthandle_group_by_domain: (a: number) => [number, number, number];
     readonly vaulthandle_group_by_letter: (a: number) => [number, number, number];
     readonly vaulthandle_group_by_tag: (a: number) => [number, number, number];
+    readonly vaulthandle_put_entries: (a: number) => [number, number, number, number];
+    readonly vaulthandle_rekey: (a: number, b: number, c: number) => [number, number, number, number];
     readonly vaulthandle_search: (a: number, b: number, c: number) => [number, number, number];
+    readonly vaulthandle_set_entries: (a: number, b: any) => [number, number, number];
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+    readonly __wbindgen_exn_store: (a: number) => void;
+    readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __externref_table_dealloc: (a: number) => void;
+    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_start: () => void;
 }
 

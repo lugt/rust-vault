@@ -76,5 +76,8 @@ async fn main() -> anyhow::Result<()> {
             };
             ops::run_group(pw, s).await
         }
+        Cmd::History => ops::run_history().await,
+        Cmd::Clear { force } => ops::run_clear(force).await,
+        Cmd::Recover { from_version } => ops::run_recover(from_version).await,
     }
 }

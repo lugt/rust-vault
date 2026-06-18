@@ -7,6 +7,7 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::IntoResponse;
 use axum::Json;
+use serde::Deserialize;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use vault_core::protocol::{
@@ -194,6 +195,84 @@ pub async fn post_rekey(
             &kdf_params,
             &ts,
         )?;
+    Ok(Json(json!({ "version": new_v.as_u64() })))
+}
+
+/// `GET /vault/history` — list archived versions (metadata only).
+pub async fn get_history(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ServerError> {
+    if !check_bearer(auth_header(&headers).as_deref(), &state.auth_token) {
+        return Err(ServerError::Unauthorized);
+    }
+    let store = state
+        .store
+        .lock()
+        .map_err(|e| ServerError::Internal(format!("store lock poisoned: {e}")))?;
+    let current = store.get_snapshot()?.map(|s| s.version.as_u64());
+    let history = store.list_history()?;
+    drop(store);
+
+    let items: Vec<serde_json::Value> = history
+        .into_iter()
+        .map(|h| {
+            json!({
+                "version": h.version.as_u64(),
+                "archived_at": h.archived_at,
+            })
+        })
+        .collect();
+    Ok(Json(json!({
+        "current_version": current,
+        "history": items,
+    })))
+}
+
+/// `POST /vault/clear` — archive current snapshot to history and empty the vault.
+pub async fn post_clear(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<axum::http::StatusCode, ServerError> {
+    if !check_bearer(auth_header(&headers).as_deref(), &state.auth_token) {
+        return Err(ServerError::Unauthorized);
+    }
+    let ts = chrono::Utc::now().to_rfc3339();
+    state
+        .store
+        .lock()
+        .map_err(|e| ServerError::Internal(format!("store lock poisoned: {e}")))?
+        .clear_current(&ts)?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+pub struct RecoverRequest {
+    pub from_version: u64,
+}
+
+/// `POST /vault/recover` — restore an archived version as the new current.
+/// The restored snapshot is still encrypted with the OLD master password.
+pub async fn post_recover(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(body): Json<RecoverRequest>,
+) -> Result<Json<serde_json::Value>, ServerError> {
+    if !check_bearer(auth_header(&headers).as_deref(), &state.auth_token) {
+        return Err(ServerError::Unauthorized);
+    }
+    let from = Version(body.from_version);
+    let store = state
+        .store
+        .lock()
+        .map_err(|e| ServerError::Internal(format!("store lock poisoned: {e}")))?;
+    // If there's a current snapshot, bump past it; otherwise use from+1.
+    let new_v = match store.get_snapshot()? {
+        Some(cur) => cur.version.increment_saturating(),
+        None => from.increment_saturating(),
+    };
+    let ts = chrono::Utc::now().to_rfc3339();
+    store.restore_from_history(from, new_v, &ts)?;
     Ok(Json(json!({ "version": new_v.as_u64() })))
 }
 
