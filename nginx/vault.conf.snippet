@@ -2,18 +2,30 @@
 # 限流 zone 必须放在 http {} 顶层（不是 server {}）。
 # 请在 http { ... } 里添加（或确认已有）：
 #   limit_req_zone $binary_remote_addr zone=vault_api:10m rate=5r/s;
-#
-# 静态 Web 客户端（如要同站点托管 SPA，取消以下两行注释并调整 root）：
-# root /var/www/vault/web;
-# location = /keychain { return 301 /keychain/; }
-# location /keychain/ { try_files $uri $uri/ /keychain/index.html; }
 
-# API 反代：粘贴到既有 server { ... } 块内
+# 静态 SPA 入口：访问 /keychain 跳到 /keychain/
+location = /keychain {
+    return 301 /keychain/;
+}
+
+# 默认 /keychain/* 走静态文件，找不到再 fallback 到 @vault_api
+# alias 必须带尾部斜杠（与 location 的尾部斜杠匹配），否则 URI 拼接错位。
+# 指向 web/ 部署的位置；Nginx 启动用户（通常是 www-data / nginx）必须能读。
+# 常见路径：
+#   /var/www/vault/keychain/    （生产部署，推荐）
+#   /usr/local/erpshared/vault-web/  （已部署的位置示例）
+#   /home/claw/vault-web/        （claw 用户自管，没有 root 时）
 location /keychain/ {
-    # 去掉前缀 /keychain/，让 Rust 服务看到 /vault/...
+    alias /usr/local/erpshared/vault-web/;
+    index index.html;
+    try_files $uri $uri/ /keychain/index.html @vault_api;
+}
+
+# API 反代（named location，前缀剥离后代理到 Rust）
+location @vault_api {
+    # 去掉 /keychain/ 前缀，Rust 看到 /vault/...
     rewrite ^/keychain/(.*)$ /$1 break;
 
-    # 限流（复用用户在 http{} 里定义的 vault_api zone）
     limit_req zone=vault_api burst=10 nodelay;
 
     proxy_pass http://127.0.0.1:8080;
@@ -24,7 +36,7 @@ location /keychain/ {
     proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
 
-    # 防 DoS：限制请求体
+    # 防 DoS
     client_max_body_size 8m;
 
     # 超时
