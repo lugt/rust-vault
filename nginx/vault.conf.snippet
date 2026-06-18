@@ -8,21 +8,11 @@ location = /keychain {
     return 301 /keychain/;
 }
 
-# 默认 /keychain/* 走静态文件，找不到再 fallback 到 @vault_api
-# alias 必须带尾部斜杠（与 location 的尾部斜杠匹配），否则 URI 拼接错位。
-# 指向 web/ 部署的位置；Nginx 启动用户（通常是 www-data / nginx）必须能读。
-# 常见路径：
-#   /var/www/vault/keychain/    （生产部署，推荐）
-#   /usr/local/erpshared/vault-web/  （已部署的位置示例）
-#   /home/claw/vault-web/        （claw 用户自管，没有 root 时）
-location /keychain/ {
-    alias /usr/local/erpshared/vault-web/;
-    index index.html;
-    try_files $uri $uri/ /keychain/index.html @vault_api;
-}
-
-# API 反代（named location，前缀剥离后代理到 Rust）
-location @vault_api {
+# 1) API 反代（精确前缀 + 优先级 ^~，不会被其他 location 抢走）
+#    Rust 的 API 路径是 /vault/...，所以匹配 /keychain/vault 开头即可
+#    GET/PUT /keychain/vault → Rust
+#    POST /keychain/vault/rekey → Rust
+location ^~ /keychain/vault {
     # 去掉 /keychain/ 前缀，Rust 看到 /vault/...
     rewrite ^/keychain/(.*)$ /$1 break;
 
@@ -43,5 +33,18 @@ location @vault_api {
     proxy_connect_timeout 5s;
     proxy_send_timeout    30s;
     proxy_read_timeout    30s;
+}
+
+# 2) 静态文件：所有其他 /keychain/* 走 alias
+#    alias 必须带尾部斜杠（与 location 的尾部斜杠匹配）。
+#    Nginx worker 用户（通常是 www-data / nginx）必须能读这个目录。
+#    常见路径：
+#      /var/www/vault/keychain/         （生产部署）
+#      /usr/local/erpshared/vault-web/   （已部署示例）
+#      /home/claw/vault-web/             （用户自管）
+# 已知坑：不要在此处用 try_files（try_files + alias 在 Nginx 里路径解析错位）
+location /keychain/ {
+    alias /usr/local/erpshared/vault-web/;
+    index index.html;
 }
 # ===== vault 反代 end =====
