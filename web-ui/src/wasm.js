@@ -40,10 +40,10 @@ export function rekeyHandle(newPassword) {
   return JSON.parse(handle.rekey(newPassword));
 }
 
-/** Get all entries as a plain JS array (deep clone via JSON). */
+/** Get all entries as a plain JS array. */
 export function allEntries() {
   if (!handle) return [];
-  return JSON.parse(JSON.stringify(handle.all()));
+  return JSON.parse(handle.all());
 }
 
 /** Replace in-memory entries with the given array. */
@@ -54,7 +54,7 @@ export function setEntries(arr) {
 
 export function searchEntries(q) {
   if (!handle) return [];
-  return handle.search(q);
+  return JSON.parse(handle.search(q));
 }
 
 export function entryCount() {

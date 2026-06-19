@@ -81,11 +81,10 @@ impl VaultHandle {
         self.entries.len()
     }
 
-    /// Returns the decrypted entries as a JSON array.
+    /// Returns the decrypted entries as a JSON string.
     #[wasm_bindgen]
-    pub fn all(&self) -> Result<JsValue, JsValue> {
-        let v: Vec<serde_json::Value> = self.entries.iter().map(entry_to_json).collect();
-        serde_wasm_bindgen::to_value(&v).map_err(|e| JsValue::from_str(&e.to_string()))
+    pub fn all(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.entries).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Replace the in-memory entry list with the given JSON array, returning
@@ -103,21 +102,38 @@ impl VaultHandle {
         Ok(self.entries.len())
     }
 
-    /// Search with a query string. Returns hits sorted by score desc.
+    /// Search with a query string. Returns hits (with score field) as a JSON string.
+    /// Empty query returns ALL entries with score 1.0.
     #[wasm_bindgen]
-    pub fn search(&self, query: &str) -> Result<JsValue, JsValue> {
+    pub fn search(&self, query: &str) -> Result<String, JsValue> {
+        if query.trim().is_empty() {
+            let v: Vec<serde_json::Value> = self
+                .entries
+                .iter()
+                .map(|e| {
+                    let mut j = serde_json::to_value(e)
+                        .unwrap_or_else(|_| serde_json::Value::Object(Default::default()));
+                    j.as_object_mut()
+                        .unwrap()
+                        .insert("score".into(), serde_json::json!(1.0_f32));
+                    j
+                })
+                .collect();
+            return serde_json::to_string(&v).map_err(|e| JsValue::from_str(&e.to_string()));
+        }
         let hits = vault_core::search::search(query, &self.entries);
         let v: Vec<serde_json::Value> = hits
             .iter()
             .map(|h| {
-                let mut j = entry_to_json(&h.entry);
+                let mut j = serde_json::to_value(h.entry)
+                    .unwrap_or_else(|_| serde_json::Value::Object(Default::default()));
                 j.as_object_mut()
                     .unwrap()
                     .insert("score".into(), serde_json::json!(h.score));
                 j
             })
             .collect();
-        serde_wasm_bindgen::to_value(&v).map_err(|e| JsValue::from_str(&e.to_string()))
+        serde_json::to_string(&v).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Group by domain. Returns `[{key, count}, ...]` sorted by count desc.
@@ -222,15 +238,6 @@ impl VaultHandle {
     }
 }
 
-fn entry_to_json(e: &vault_core::Entry) -> serde_json::Value {
-    serde_json::json!({
-        "name": e.name,
-        "url": e.url,
-        "username": e.username,
-        "password": e.password,
-        "note": e.note,
-    })
-}
 
 fn json_to_entry(v: &serde_json::Value) -> Result<vault_core::Entry, JsValue> {
     Ok(vault_core::Entry {

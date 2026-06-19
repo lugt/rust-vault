@@ -1,8 +1,20 @@
 <script setup>
+import { ref } from "vue";
 import { NSpace, NTag, NButton, NText } from "naive-ui";
+import { useMessage, useDialog } from "naive-ui";
 import { state } from "../store.js";
+import { saveToServer } from "../save.js";
 
-defineEmits(["lock"]);
+const emit = defineEmits(["lock"]);
+const message = useMessage();
+const dialog = useDialog();
+const saving = ref(false);
+
+async function doSave() {
+  saving.value = true;
+  await saveToServer(message, dialog);
+  saving.value = false;
+}
 </script>
 
 <template>
@@ -19,7 +31,16 @@ defineEmits(["lock"]);
       </n-tag>
     </n-space>
     <div style="flex: 1"></div>
-    <n-button size="small" @click="$emit('lock')">🔒 锁定</n-button>
+    <n-space :size="8">
+      <n-button
+        v-if="state.dirty"
+        size="small"
+        type="primary"
+        :loading="saving"
+        @click="doSave"
+      >💾 保存</n-button>
+      <n-button size="small" @click="$emit('lock')">🔒 锁定</n-button>
+    </n-space>
   </div>
 </template>
 

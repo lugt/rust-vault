@@ -83,6 +83,5 @@ async function doSave() {
         <span style="white-space: pre-wrap">{{ entry.note || "—" }}</span>
       </nDescriptionsItem>
     </nDescriptions>
-    <p class="muted" style="margin-top: 12px">改动后请到「设置」或顶栏提示点「保存」写入服务器。</p>
   </div>
 </template>
