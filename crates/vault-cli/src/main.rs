@@ -79,5 +79,39 @@ async fn main() -> anyhow::Result<()> {
         Cmd::History => ops::run_history().await,
         Cmd::Clear { force } => ops::run_clear(force).await,
         Cmd::Recover { from_version } => ops::run_recover(from_version).await,
+        Cmd::List {
+            password_file,
+            show_password,
+        } => {
+            let pw = ops::read_master_password(password_file.as_deref())?;
+            ops::run_list(pw, show_password).await
+        }
+        Cmd::Add {
+            password_file,
+            name,
+            url,
+            username,
+            note,
+        } => {
+            let pw = ops::read_master_password(password_file.as_deref())?;
+            ops::run_add(pw, name, url, username, note).await
+        }
+        Cmd::Update {
+            password_file,
+            name,
+            url,
+            username,
+            note,
+        } => {
+            let pw = ops::read_master_password(password_file.as_deref())?;
+            ops::run_update(pw, name, url, username, note).await
+        }
+        Cmd::Delete {
+            password_file,
+            name,
+        } => {
+            let pw = ops::read_master_password(password_file.as_deref())?;
+            ops::run_delete(pw, name).await
+        }
     }
 }

@@ -86,6 +86,53 @@ pub enum Cmd {
         #[arg(long)]
         from_version: u64,
     },
+    /// List every entry in the vault (decrypted).
+    List {
+        /// Read master password from the first line of this file instead of
+        /// prompting. Passwords are never accepted on the command line.
+        #[arg(long)]
+        password_file: Option<std::path::PathBuf>,
+        /// Show each entry's password and note.
+        #[arg(long)]
+        show_password: bool,
+    },
+    /// Add a single entry. Fields omitted from the CLI are prompted
+    /// interactively; the entry password is always a hidden prompt.
+    Add {
+        #[arg(long)]
+        password_file: Option<std::path::PathBuf>,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        url: Option<String>,
+        #[arg(long)]
+        username: Option<String>,
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Edit a single entry by name. CLI-provided fields override directly;
+    /// others prompt with the current value as the default.
+    Update {
+        #[arg(long)]
+        password_file: Option<std::path::PathBuf>,
+        /// Name of the entry to edit.
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        url: Option<String>,
+        #[arg(long)]
+        username: Option<String>,
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Delete a single entry by name.
+    Delete {
+        #[arg(long)]
+        password_file: Option<std::path::PathBuf>,
+        /// Name of the entry to delete.
+        #[arg(long)]
+        name: String,
+    },
 }
 
 /// Axis for the `group` command.
