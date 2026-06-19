@@ -133,6 +133,18 @@ pub enum Cmd {
         #[arg(long)]
         name: String,
     },
+    /// Import entries from a CSV file, merging into the current vault.
+    /// Duplicate names are skipped by default; use --overwrite to replace them.
+    Import {
+        #[arg(long)]
+        password_file: Option<std::path::PathBuf>,
+        /// CSV file to import (header: name,url,username,password,note).
+        #[arg(long)]
+        csv: std::path::PathBuf,
+        /// Overwrite existing entries that share a name with an imported entry.
+        #[arg(long)]
+        overwrite: bool,
+    },
 }
 
 /// Axis for the `group` command.

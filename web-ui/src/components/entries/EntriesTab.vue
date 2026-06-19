@@ -5,11 +5,13 @@ import { state, markDirty, bumpIdle } from "../../store.js";
 import { searchEntries, allEntries } from "../../wasm.js";
 import EntryDetail from "./EntryDetail.vue";
 import EntryEditor from "./EntryEditor.vue";
+import ImportDrawer from "./ImportDrawer.vue";
 
 const query = ref("");
 const selected = ref(null); // entry object
 const editorOpen = ref(false);
 const editorMode = ref("add"); // add | edit
+const importOpen = ref(false);
 let debounce = null;
 
 const hits = ref([]);
@@ -72,6 +74,11 @@ function onDeleted() {
   refresh();
   markDirty(true);
 }
+
+function onImported() {
+  refresh();
+  selected.value = null;
+}
 </script>
 
 <template>
@@ -84,6 +91,7 @@ function onDeleted() {
           clearable
         />
         <n-button type="primary" block @click="openAdd">+ 新增条目</n-button>
+        <n-button block @click="importOpen = true">⬆ 批量导入 CSV</n-button>
       </n-space>
       <div class="list-wrap">
         <n-empty v-if="hits.length === 0" description="无条目" style="margin-top: 32px" />
@@ -122,6 +130,10 @@ function onDeleted() {
       :mode="editorMode"
       :entry="selected"
       @saved="onSaved"
+    />
+    <ImportDrawer
+      v-model:show="importOpen"
+      @imported="onImported"
     />
   </div>
 </template>

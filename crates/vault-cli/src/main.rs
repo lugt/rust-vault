@@ -113,5 +113,13 @@ async fn main() -> anyhow::Result<()> {
             let pw = ops::read_master_password(password_file.as_deref())?;
             ops::run_delete(pw, name).await
         }
+        Cmd::Import {
+            password_file,
+            csv,
+            overwrite,
+        } => {
+            let pw = ops::read_master_password(password_file.as_deref())?;
+            ops::run_import(pw, &csv, overwrite).await
+        }
     }
 }

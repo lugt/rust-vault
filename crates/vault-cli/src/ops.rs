@@ -677,6 +677,67 @@ pub async fn run_delete(password: String, name: String) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// `vault-cli import --csv FILE` — merge CSV into the current vault.
+/// Duplicate names are skipped unless `--overwrite` is set.
+pub async fn run_import(
+    password: String,
+    csv_path: &Path,
+    overwrite: bool,
+) -> anyhow::Result<()> {
+    let cfg = CliConfig::load().context("load CLI config (run `vault-cli init` first)")?;
+    let mut unlocked = fetch_unlock(&cfg.api, &cfg.token, &password).await?;
+
+    let raw = std::fs::read(csv_path)
+        .with_context(|| format!("read {}", csv_path.display()))?;
+    let incoming = csv_codec::decode_csv(&raw)
+        .with_context(|| format!("parse {}", csv_path.display()))?;
+
+    if incoming.is_empty() {
+        println!("CSV is empty — nothing to import.");
+        return Ok(());
+    }
+
+    let mut added = 0usize;
+    let mut updated = 0usize;
+    let mut skipped = 0usize;
+
+    for entry in incoming {
+        if let Some(pos) = unlocked.entries.iter().position(|e| e.name == entry.name) {
+            if overwrite {
+                unlocked.entries[pos] = entry;
+                updated += 1;
+            } else {
+                skipped += 1;
+            }
+        } else {
+            unlocked.entries.push(entry);
+            added += 1;
+        }
+    }
+
+    if added == 0 && updated == 0 {
+        println!("Nothing imported (all {} entries already exist; use --overwrite to replace).", skipped);
+        return Ok(());
+    }
+
+    let new_v = push_entries(
+        &cfg.api,
+        &cfg.token,
+        unlocked.version,
+        &unlocked.cek,
+        &password,
+        &unlocked.entries,
+    )
+    .await?;
+
+    println!(
+        "Imported: +{added} new, ~{updated} updated, {skipped} skipped. \
+         Vault now at v{new_v} ({} entries).",
+        unlocked.entries.len()
+    );
+    Ok(())
+}
+
 /// Truncate a string to `max` chars, appending `…` if truncated.
 fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
