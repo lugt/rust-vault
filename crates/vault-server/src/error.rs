@@ -43,20 +43,19 @@ pub enum ServerError {
     /// Version conflict (CAS failure). Carries the current server state so
     /// the client can decide how to merge.
     #[error("version conflict")]
-    VersionConflict {
-        /// The version currently on the server.
-        current: u64,
-        /// Current salt (raw bytes).
-        salt: Vec<u8>,
-        /// Current wrapped CEK (nonce + ct).
-        wrapped_cek: Vec<u8>,
-        /// Current ciphertext (nonce + ct).
-        ciphertext: Vec<u8>,
-        /// Current KDF params (JSON-encoded).
-        kdf_params: Vec<u8>,
-        /// Timestamp of the current snapshot.
-        created_at: String,
-    },
+    VersionConflict(Box<VersionConflictData>),
+}
+
+/// Payload for the `VersionConflict` error variant. Boxed to keep
+/// `ServerError` small on the stack.
+#[derive(Debug)]
+pub struct VersionConflictData {
+    pub current: u64,
+    pub salt: Vec<u8>,
+    pub wrapped_cek: Vec<u8>,
+    pub ciphertext: Vec<u8>,
+    pub kdf_params: Vec<u8>,
+    pub created_at: String,
 }
 
 use crate::store::StoreError;
@@ -77,14 +76,15 @@ impl IntoResponse for ServerError {
                 Json(json!({ "error": "body too large" })),
             )
                 .into_response(),
-            ServerError::VersionConflict {
-                current,
-                salt,
-                wrapped_cek,
-                ciphertext,
-                kdf_params,
-                created_at,
-            } => {
+            ServerError::VersionConflict(data) => {
+                let VersionConflictData {
+                    current,
+                    salt,
+                    wrapped_cek,
+                    ciphertext,
+                    kdf_params,
+                    created_at,
+                } = *data;
                 let (nonce_w, ct_w) = match split_nonce(&wrapped_cek) {
                     Some(p) => p,
                     None => {

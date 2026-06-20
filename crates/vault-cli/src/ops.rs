@@ -391,7 +391,7 @@ pub fn read_master_password(password_file: Option<&Path>) -> anyhow::Result<Stri
         Some(p) => {
             let s = std::fs::read_to_string(p)
                 .with_context(|| format!("read password file {}", p.display()))?;
-            Ok(s.trim_end_matches(|c| c == '\r' || c == '\n').to_string())
+            Ok(s.trim_end_matches(['\r', '\n']).to_string())
         }
         None => prompt_password("Master password: "),
     }
@@ -482,7 +482,7 @@ fn read_field(label: &str, default: &str) -> anyhow::Result<String> {
     std::io::stderr().flush().ok();
     let mut s = String::new();
     std::io::stdin().read_line(&mut s)?;
-    let s = s.trim_end_matches(|c| c == '\r' || c == '\n').to_string();
+    let s = s.trim_end_matches(['\r', '\n']).to_string();
     if s.is_empty() {
         Ok(default.to_string())
     } else {
@@ -520,10 +520,7 @@ pub async fn run_list(password: String, show_password: bool) -> anyhow::Result<(
         unlocked.entries.len(),
         unlocked.version
     );
-    println!(
-        "{:-<4}  {:-<30}  {:-<30}  {}",
-        "#", "name", "url", "username"
-    );
+    println!("{:-<4}  {:-<30}  {:-<30}  username", '#', "name", "url");
     for (i, e) in unlocked.entries.iter().enumerate() {
         println!(
             "{:>3}  {:<30}  {:<30}  {}",

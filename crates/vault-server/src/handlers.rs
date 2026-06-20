@@ -134,16 +134,16 @@ pub async fn put_vault(
     drop(store);
     match res {
         Ok(()) => Ok(Json(json!({ "version": new_v.as_u64() }))),
-        Err(ServerError::Store(crate::store::StoreError::VersionConflict { current, .. })) => {
-            Err(ServerError::VersionConflict {
+        Err(ServerError::Store(crate::store::StoreError::VersionConflict { current, .. })) => Err(
+            ServerError::VersionConflict(Box::new(crate::error::VersionConflictData {
                 current,
                 salt,
                 wrapped_cek: wrapped,
                 ciphertext: ct,
                 kdf_params,
                 created_at: ts,
-            })
-        }
+            })),
+        ),
         Err(e) => Err(e),
     }
 }

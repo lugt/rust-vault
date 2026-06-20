@@ -121,6 +121,7 @@ impl Store {
 
     /// Compare-and-swap update. The current row must be at `expected`;
     /// the new version is `new_v`. Archives the old row to `vault_history`.
+    #[allow(clippy::too_many_arguments)]
     pub fn put_if_match(
         &self,
         expected: Version,

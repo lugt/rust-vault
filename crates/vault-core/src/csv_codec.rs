@@ -13,7 +13,7 @@ pub fn encode_csv(entries: &[Entry]) -> Result<Vec<u8>, CsvError> {
     let mut wtr = csv::Writer::from_writer(Vec::new());
     wtr.write_record(HEADER.split(','))?;
     for e in entries {
-        wtr.write_record(&[&e.name, &e.url, &e.username, &e.password, &e.note])?;
+        wtr.write_record([&e.name, &e.url, &e.username, &e.password, &e.note])?;
     }
     Ok(wtr.into_inner()?)
 }

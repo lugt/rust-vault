@@ -185,7 +185,7 @@ impl VaultHandle {
         let params = KdfParams::default();
         let mk = derive_mk(self.current_password.as_bytes(), &salt, &params)
             .map_err(|e| JsValue::from_str(&format!("kdf: {e}")))?;
-        let wrapped = wrap_cek(&mk, &cek).map_err(|e| JsValue::from_str(&format!("wrap: {e}")))?;
+        let wrapped = wrap_cek(&mk, cek).map_err(|e| JsValue::from_str(&format!("wrap: {e}")))?;
 
         let write = VaultWrite {
             salt: b64_encode(salt.as_bytes()),

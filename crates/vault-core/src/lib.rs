@@ -251,7 +251,7 @@ mod tests {
             "\u{5bc6}\u{7801}".into(),
             "\u{5907}\u{6ce8} #\u{4ed5}\u{4e8b}".into(),
         );
-        let bytes = encode_csv(&[e.clone()]).unwrap();
+        let bytes = encode_csv(std::slice::from_ref(&e)).unwrap();
         let back = decode_csv(&bytes).unwrap();
         assert_eq!(back, vec![e]);
     }
