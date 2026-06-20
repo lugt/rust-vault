@@ -27,11 +27,13 @@ export async function apiGet(suffix = "") {
   return { res, url };
 }
 
-export async function apiPost(suffix, body) {
+export async function apiPost(suffix, body, ifMatch) {
   const url = apiUrl() + suffix;
+  const headers = { ...authHeader(), "content-type": "application/json" };
+  if (ifMatch !== undefined) headers["if-match"] = String(ifMatch);
   const res = await fetch(url, {
     method: "POST",
-    headers: { ...authHeader(), "content-type": "application/json" },
+    headers,
     body: JSON.stringify(body ?? {}),
   });
   return { res, url };

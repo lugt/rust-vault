@@ -34,7 +34,7 @@ async function doRekey() {
   if (newPw.value !== newPw2.value) return message.error("两次输入不一致");
   try {
     const body = rk(newPw.value);
-    const { res } = await apiPost("/rekey", body);
+    const { res } = await apiPost("/rekey", body, state.currentVersion);
     if (!res.ok) {
       message.error(`rekey 失败: ${res.status} ${await res.text()}`);
       return;
