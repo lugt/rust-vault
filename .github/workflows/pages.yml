@@ -1,0 +1,63 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main, feature/mvp]
+    paths:
+      - "crates/vault-wasm/**"
+      - "crates/vault-core/**"
+      - "web-ui/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version 0.2.92 --locked
+
+      - name: Build WASM
+        run: |
+          cargo build -p vault-wasm --target wasm32-unknown-unknown --release
+          wasm-bindgen \
+            target/wasm32-unknown-unknown/release/vault_wasm.wasm \
+            --out-dir web-ui/public/pkg \
+            --target web
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web-ui/package-lock.json
+
+      - name: Install npm deps
+        run: cd web-ui && npm ci
+
+      - name: Build web UI
+        run: cd web-ui && npm run build
+
+      - name: Add .nojekyll
+        run: touch web-ui/dist/.nojekyll
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: web-ui/dist
+          force_orphan: true
