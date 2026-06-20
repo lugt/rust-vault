@@ -493,7 +493,11 @@ fn read_field(label: &str, default: &str) -> anyhow::Result<String> {
 /// Prompt for a hidden field. If `keep_default` is true, an empty input keeps
 /// `default` (used by `update` to leave the entry password unchanged).
 fn read_hidden(label: &str, default: &str, keep_default: bool) -> anyhow::Result<String> {
-    let hint = if keep_default { " (enter to keep current)" } else { "" };
+    let hint = if keep_default {
+        " (enter to keep current)"
+    } else {
+        ""
+    };
     let s = prompt_password(&format!("{label}{hint}: "))?;
     if s.is_empty() && keep_default {
         Ok(default.to_string())
@@ -511,8 +515,15 @@ pub async fn run_list(password: String, show_password: bool) -> anyhow::Result<(
         println!("(vault is empty)");
         return Ok(());
     }
-    println!("{} entries (v{}):", unlocked.entries.len(), unlocked.version);
-    println!("{:-<4}  {:-<30}  {:-<30}  {}", "#", "name", "url", "username");
+    println!(
+        "{} entries (v{}):",
+        unlocked.entries.len(),
+        unlocked.version
+    );
+    println!(
+        "{:-<4}  {:-<30}  {:-<30}  {}",
+        "#", "name", "url", "username"
+    );
     for (i, e) in unlocked.entries.iter().enumerate() {
         println!(
             "{:>3}  {:<30}  {:<30}  {}",
@@ -589,7 +600,10 @@ pub async fn run_add(
         &unlocked.entries,
     )
     .await?;
-    println!("Added. Vault now at v{new_v} ({} entries).", unlocked.entries.len());
+    println!(
+        "Added. Vault now at v{new_v} ({} entries).",
+        unlocked.entries.len()
+    );
     Ok(())
 }
 
@@ -679,18 +693,13 @@ pub async fn run_delete(password: String, name: String) -> anyhow::Result<()> {
 
 /// `vault-cli import --csv FILE` — merge CSV into the current vault.
 /// Duplicate names are skipped unless `--overwrite` is set.
-pub async fn run_import(
-    password: String,
-    csv_path: &Path,
-    overwrite: bool,
-) -> anyhow::Result<()> {
+pub async fn run_import(password: String, csv_path: &Path, overwrite: bool) -> anyhow::Result<()> {
     let cfg = CliConfig::load().context("load CLI config (run `vault-cli init` first)")?;
     let mut unlocked = fetch_unlock(&cfg.api, &cfg.token, &password).await?;
 
-    let raw = std::fs::read(csv_path)
-        .with_context(|| format!("read {}", csv_path.display()))?;
-    let incoming = csv_codec::decode_csv(&raw)
-        .with_context(|| format!("parse {}", csv_path.display()))?;
+    let raw = std::fs::read(csv_path).with_context(|| format!("read {}", csv_path.display()))?;
+    let incoming =
+        csv_codec::decode_csv(&raw).with_context(|| format!("parse {}", csv_path.display()))?;
 
     if incoming.is_empty() {
         println!("CSV is empty — nothing to import.");
@@ -716,7 +725,10 @@ pub async fn run_import(
     }
 
     if added == 0 && updated == 0 {
-        println!("Nothing imported (all {} entries already exist; use --overwrite to replace).", skipped);
+        println!(
+            "Nothing imported (all {} entries already exist; use --overwrite to replace).",
+            skipped
+        );
         return Ok(());
     }
 

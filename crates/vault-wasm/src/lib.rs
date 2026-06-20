@@ -238,7 +238,6 @@ impl VaultHandle {
     }
 }
 
-
 fn json_to_entry(v: &serde_json::Value) -> Result<vault_core::Entry, JsValue> {
     Ok(vault_core::Entry {
         name: v["name"].as_str().unwrap_or("").to_string(),
